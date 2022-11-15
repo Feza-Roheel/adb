@@ -1,0 +1,50 @@
+{
+  "name": "@yume-chan/adb",
+  "version": "0.0.16",
+  "description": "TypeScript implementation of Android Debug Bridge (ADB) protocol.",
+  "keywords": [
+    "adb",
+    "android-phone"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "Simon Chan",
+    "email": "cnsimonchan@live.com",
+    "url": "https://chensi.moe/blog"
+  },
+  "homepage": "https://github.com/yume-chan/ya-webadb/tree/master/libraries/adb#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yume-chan/ya-webadb.git",
+    "directory": "libraries/adb"
+  },
+  "bugs": {
+    "url": "https://github.com/yume-chan/ya-webadb/issues"
+  },
+  "type": "module",
+  "main": "esm/index.js",
+  "types": "esm/index.d.ts",
+  "dependencies": {
+    "@yume-chan/async": "^2.1.4",
+    "@yume-chan/dataview-bigint-polyfill": "^0.0.16",
+    "@yume-chan/event": "^0.0.16",
+    "@yume-chan/struct": "^0.0.16",
+    "tslib": "^2.3.1",
+    "web-streams-polyfill": "^4.0.0-beta.3"
+  },
+  "devDependencies": {
+    "@jest/globals": "^28.1.0",
+    "@types/node": "^17.0.17",
+    "@yume-chan/ts-package-builder": "^1.0.0",
+    "cross-env": "^7.0.3",
+    "jest": "^28.1.0",
+    "ts-jest": "^28.0.2",
+    "typescript": "4.7.2"
+  },
+  "scripts": {
+    "build": "tsc -b tsconfig.build.json",
+    "build:watch": "tsc -b tsconfig.build.json",
+    "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --coverage"
+  },
+  "readme": "# @yume-chan/adb\n\nTypeScript implementation of Android Debug Bridge (ADB) protocol.\n\n**WARNING:** The public API is UNSTABLE. If you have any questions, please open an issue.\n\n- [Compatibility](#compatibility)\n  - [Basic usage](#basic-usage)\n  - [Use without bundlers](#use-without-bundlers)\n- [Connection](#connection)\n  - [Backend](#backend)\n    - [`connect`](#connect)\n- [Authentication](#authentication)\n    - [AdbCredentialStore](#adbcredentialstore)\n      - [`generateKey`](#generatekey)\n      - [`iterateKeys`](#iteratekeys)\n      - [Implementations](#implementations)\n    - [AdbAuthenticator](#adbauthenticator)\n    - [`authenticate`](#authenticate)\n- [Stream multiplex](#stream-multiplex)\n- [Commands](#commands)\n  - [subprocess](#subprocess)\n    - [raw mode](#raw-mode)\n    - [pty mode](#pty-mode)\n  - [usb](#usb)\n  - [tcpip](#tcpip)\n  - [sync](#sync)\n    - [LIST](#list)\n    - [LIS2](#lis2)\n    - [STAT](#stat)\n    - [LST2](#lst2)\n    - [STA2](#sta2)\n    - [RECV](#recv)\n    - [RCV2](#rcv2)\n    - [SEND](#send)\n    - [SND2](#snd2)\n- [Useful links](#useful-links)\n\n## Compatibility\n\nHere is a list of features, their used APIs, and their compatibilities. If an optional feature is not actually used, its requirements can be ignored.\n\nSome features can be polyfilled to support older runtimes, but this library doesn't ship with any polyfills.\n\nEach backend may have different requirements.\n\n### Basic usage\n\n|                                 | Chrome | Edge | Firefox | Internet Explorer | Safari | Node.js             |\n| ------------------------------- | ------ | ---- | ------- | ----------------- | ------ | ------------------- |\n| `@yume-chan/struct`<sup>1</sup> | 67     | 79   | 68      | No                | 14     | 8.3<sup>2</sup>, 11 |\n| *Overall*                       | 67     | 79   | No      | No                | 14.1   | 16.5                |\n\n<sup>1</sup> `uint64` and `string` are used.\n\n<sup>2</sup> `TextEncoder` and `TextDecoder` are only available in `util` module. Need to be assigned to `globalThis`.\n\n### Use without bundlers\n\n|                 | Chrome | Edge | Firefox | Internet Explorer | Safari | Node.js |\n| --------------- | ------ | ---- | ------- | ----------------- | ------ | ------- |\n| Top-level await | 89     | 89   | 89      | No                | 15     | 14.8    |\n\n## Connection\n\nThis library doesn't tie to a specific transportation method.\n\nInstead, a `Backend` is responsible for transferring data in its own way (USB, WebSocket, TCP, etc).\n\n### Backend\n\n#### `connect`\n\n```ts\nconnect(): ValueOrPromise<ReadableWritablePair<AdbPacketCore, AdbPacketInit>>\n```\n\nConnect to a device and create a pair of `AdbPacket` streams.\n\nThe backend, instead of the core library, is responsible for serializing and deserializing the packets. Because it's extreme slow for WebUSB backend (`@yume-chan/adb-backend-webusb`) to read packets with unknown size.\n\n## Authentication\n\nFor how does ADB authentication work, see https://chensi.moe/blog/2020/09/30/webadb-part2-connection/#auth.\n\nIn this library, authentication comes in two parts:\n\n#### AdbCredentialStore\n\nAn interface to generate, store and iterate ADB private keys on each runtime. (Because Node.js and Browsers have different APIs to do this)\n\n##### `generateKey`\n\n```ts\ngenerateKey(): ValueOrPromise<Uint8Array>\n```\n\nGenerate and store a RSA private key with modulus length `2048` and public exponent `65537`.\n\nThe returned `Uint8Array` is the private key in PKCS #8 format.\n\n##### `iterateKeys`\n\n```ts\niterateKeys(): Iterator<ArrayBuffer> | AsyncIterator<ArrayBuffer>\n```\n\nSynchronously or asynchronously iterate through all stored RSA private keys.\n\nEach call to `iterateKeys` must return a different iterator that iterate through all stored keys.\n\n##### Implementations\n\nThe `@yume-chan/adb-credential-web` package contains a `AdbWebCredentialStore` implementation using Web Crypto API for generating keys and Web Storage API for storing keys.\n\n#### AdbAuthenticator\n\nAn `AdbAuthenticator` generates `AUTH` responses for each `AUTH` request from server.\n\nThis package contains `AdbSignatureAuthenticator` and `AdbPublicKeyAuthenticator`, the two basic modes.\n\n#### `authenticate`\n\n```ts\nstatic async authenticate(\n    connection: ReadableWritablePair<AdbPacketCore, AdbPacketCore>,\n    credentialStore: AdbCredentialStore,\n    authenticators = AdbDefaultAuthenticators,\n): Promise<Adb>\n```\n\nCall this method to authenticate the connection and create an `Adb` instance.\n\nIf an authentication process failed, it's possible to call `authenticate` again on the same connection (`AdbPacket` stream pair). Every time the device receives a `CNXN` packet, it resets all internal state, and starts a new authentication process.\n\n## Stream multiplex\n\nADB commands are all based on streams. Multiple streams can send and receive at the same time in one connection.\n\n1. Client sends an `OPEN` packet to create a stream.\n2. Server responds with `OKAY` or `FAIL`.\n3. Client and server read/write on the stream.\n4. Client/server sends a `CLSE` to close the stream.\n\n## Commands\n\n### subprocess\n\nADB has two subprocess invocation modes and two data protocols (4 combinations).\n\n#### raw mode\n\nIn raw mode, Shell protocol transfers `stdout` and `stderr` separately. It also supports returning exit code.\n\n|                             | Legacy protocol             | Shell Protocol               |\n| --------------------------- | --------------------------- | ---------------------------- |\n| Feature flag                | -                           | `shell_v2`                   |\n| Implementation              | `AdbNoneSubprocessProtocol` | `AdbShellSubprocessProtocol` |\n| Splitting stdout and stderr | No                          | Yes                          |\n| Returning exit code         | No                          | Yes                          |\n\nUse `spawn` method to create a subprocess in raw mode.\n\n#### pty mode\n\nIn PTY mode, the subprocess has a pseudo-terminal, so it can send special control sequences like clear screen and set cursor position. The two protocols both send data in `stdout`, but Shell Protocol also supports resizing the terminal from client.\n\n|                             | Legacy protocol             | Shell Protocol               |\n| --------------------------- | --------------------------- | ---------------------------- |\n| Feature flag                | -                           | `shell_v2`                   |\n| Implementation              | `AdbNoneSubprocessProtocol` | `AdbShellSubprocessProtocol` |\n| Resizing window             | No                          | Yes                          |\n\nUse `shell` method to create a subprocess in PTY mode.\n\n### usb\n\nDisable ADB over WiFi.\n\n### tcpip\n\nEnable ADB over WiFi.\n\n### sync\n\nClient and server will communicate with another protocol on the opened stream.\n\n#### LIST\n\nRequest server to list the content of a folder.\n\n#### LIS2\n\nVersion 2 of the LIST command, contains more information.\n\nSupported on devices with `ls_v2` feature.\n\n#### STAT\n\nRequest server to return the information of a file.\n\nIf path is a symbolic link, the returned information is about the link itself.\n\nSo it's actually the [`lstat`](https://linux.die.net/man/2/lstat) system call.\n\n#### LST2\n\nVersion 2 of the STAT command, contains more information.\n\nSupported on devices with `stat_v2` feature.\n\n#### STA2\n\nBasically identical to LST2, but if path is a symbolic link, the information is about the file it refers to.\n\nSupported on devices with `stat_v2` feature.\n\n#### RECV\n\nRequest server to send the content of a file.\n\n#### RCV2\n\n*(Not Implemented)*\n\nVersion 2 of the RECV command.\n\nSupported on devices with `sendrecv_v2` feature.\n\n#### SEND\n\n*(Not Implemented)*\n\nSend a file onto server's file system.\n\n#### SND2\n\n*(Not Implemented)*\n\nVersion 2 of the SEND command.\n\nSupported on devices with `sendrecv_v2` feature.\n\n## Useful links\n\n* [ADB protocol overview](https://android.googlesource.com/platform/packages/modules/adb/+/2fd69306184634c6d90db3ed3be5349e71dcc471/OVERVIEW.TXT)\n* [ADB commands](https://android.googlesource.com/platform/packages/modules/adb/+/2fd69306184634c6d90db3ed3be5349e71dcc471/SERVICES.TXT#145)\n"
+}

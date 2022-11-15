@@ -1,0 +1,12 @@
+{
+  "files": {
+    "libraries/adb-credential-web/.rush/temp/shrinkwrap-deps.json": "7a8b693a797f929a5184cf7a08cda9ced8e4a529",
+    "libraries/adb-credential-web/CHANGELOG.json": "349b121b3c7a4225d77f152b2cea51ca176f086f",
+    "libraries/adb-credential-web/CHANGELOG.md": "ac6d72956e3a9978d4944b0b53f153eec79688a3",
+    "libraries/adb-credential-web/README.md": "35dc273a753ae6f722bad96ae6e52efe9b2d6840",
+    "libraries/adb-credential-web/package.json": "82627075a49184ef9e61ab7c2fbb276a12e0c42a",
+    "libraries/adb-credential-web/src/index.ts": "42f5ead9cfde7266096dce1e82f3c7cc0309986b",
+    "libraries/adb-credential-web/tsconfig.json": "43cb24d0667828c30374e15c5930a55ea1b0bb7e"
+  },
+  "arguments": "build-ts-package "
+}
